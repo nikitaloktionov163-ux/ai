@@ -58,10 +58,11 @@ class NowPaymentsClient:
         )
 
 
-def verify_nowpayments_signature(raw_body: bytes, signature: str, secret: str) -> bool:
+def verify_nowpayments_signature(payload: dict, signature: str, secret: str) -> bool:
     if not signature or not secret:
         return False
-    digest = hmac.new(secret.encode(), raw_body, hashlib.sha512).hexdigest()
+    message = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    digest = hmac.new(secret.encode(), message.encode(), hashlib.sha512).hexdigest()
     return hmac.compare_digest(digest, signature)
 
 

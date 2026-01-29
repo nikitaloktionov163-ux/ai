@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,12 +12,14 @@ from app.db.models import Payment, PaymentStatus, SubscriptionTier
 from app.payments.nowpayments import verify_nowpayments_signature
 from app.payments.service import PaymentService
 from app.services.subscription_service import SubscriptionService
+from app.services.user_service import UserService
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
 
 class PaymentCreateRequest(BaseModel):
-    user_id: int
+    telegram_id: int
+    username: str | None = None
     tier: SubscriptionTier
     billing_cycle: str
 
@@ -41,10 +45,15 @@ async def create_payment(
     if not amount:
         raise HTTPException(status_code=400, detail="Unsupported billing cycle")
 
+    user_service = UserService()
+    user = await user_service.get_or_create(
+        session, telegram_id=payload.telegram_id, username=payload.username
+    )
+
     payment_service = PaymentService()
     payment = await payment_service.create_payment(
         session,
-        user_id=payload.user_id,
+        user_id=user.id,
         amount=amount,
         currency="USDT",
         description=f"{payload.tier.value} {payload.billing_cycle}",
@@ -98,10 +107,11 @@ async def nowpayments_ipn(
     settings = get_settings()
     raw_body = await request.body()
     signature = request.headers.get("x-nowpayments-sig", "")
-    if not verify_nowpayments_signature(raw_body, signature, settings.nowpayments_ipn_secret):
+    payload_data = json.loads(raw_body.decode())
+    if not verify_nowpayments_signature(payload_data, signature, settings.nowpayments_ipn_secret):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    payload = NowPaymentsIPN.model_validate_json(raw_body)
+    payload = NowPaymentsIPN.model_validate(payload_data)
     if not payload.order_id:
         raise HTTPException(status_code=400, detail="Missing order_id")
 

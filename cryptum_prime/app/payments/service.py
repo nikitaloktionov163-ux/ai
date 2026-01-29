@@ -39,7 +39,7 @@ class PaymentService:
             client = NowPaymentsClient()
             invoice = await client.create_invoice(
                 amount=amount,
-                price_currency=currency.lower(),
+                price_currency="usd",
                 pay_currency=settings.payment_pay_currency,
                 order_id=str(payment.id),
                 description=description,
